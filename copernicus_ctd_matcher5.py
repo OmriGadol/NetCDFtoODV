@@ -36,7 +36,7 @@ out_dir = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-S
 #                USER OPTIONS
 # ====================================================
 use_ctd    = True    # If True, pull stations from the CTD file
-use_manual = True   # If True, append stations from manual_stations list
+use_manual = False  # If True, append stations from manual_stations list
 
 # Define manual stations here if use_manual=True
 # Each dict must have:
@@ -150,13 +150,13 @@ with open(output_file, "w") as outf:
             rows = []
             for pres in manual_meta["PRESSURES"]:
                 row = {
-                    "Cruise": manual_meta["Cruise"],
+                    "Cruise": f"Model_{manual_meta['Cruise']}",
                     "Station": manual_meta["Station"],
                     "Type": "C",
                     "yyyy-mm-ddThh:mm:ss.sss": manual_meta["datetime"],
                     "Longitude [degrees_east]": manual_meta["Longitude [degrees_east]"],
                     "Latitude [degrees_north]": manual_meta["Latitude [degrees_north]"],
-                    "LOCAL_CDI_ID": manual_meta["LOCAL_CDI_ID"],
+                    "LOCAL_CDI_ID": f"Model_{manual_meta['LOCAL_CDI_ID']}",
                     "EDMO_code": "",
                     "Bot. Depth [m]": "",
                     "PRES": pres
@@ -170,7 +170,9 @@ with open(output_file, "w") as outf:
             df["datetime_parsed"] = pd.to_datetime(df["yyyy-mm-ddThh:mm:ss.sss"])
         else:
             df = df_block.copy()
-
+            # prefix Cruise & LOCAL_CDI_ID for every CTD‑derived row
+            df["Cruise"] = df["Cruise"].apply(lambda x: f"Model_{x}")
+            df["LOCAL_CDI_ID"] = df["LOCAL_CDI_ID"].apply(lambda x: f"Model_{x}")
         # validate time & coords
         t0 = np.datetime64(df.loc[0, "datetime_parsed"])
         if not (t_min <= t0 <= t_max):
