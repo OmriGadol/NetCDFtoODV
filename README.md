@@ -8,7 +8,7 @@ Main script that:
 2.	Loads Copernicus NetCDF model data (temperature and salinity)
 3.	Bilinearly interpolates model values at each CTD location & depth
 4.	Optionally processes manual station definitions
-5.	Writes a combined ODV-compatible text file containing model-only data
+5.	Writes a combined ODV-compatible text file containing model-only data, with Cruise and LOCAL_CDI_ID prefixed by Model_.
 •	README.md
 This file includes: overview, requirements, configuration, and usage instructions.
  
@@ -42,6 +42,8 @@ Usage
 5.	The script writes the combined ODV text file to output_file, ready to load into ODV.
  
 Output
-•	A single tab-delimited file (all_model_only_fullODV.txt by default) containing the original CTD column structure and header metadata, but with PSAL and TEMP replaced by interpolated model values at each station and depth.
+•	A single tab-delimited file (`all_model_only_fullODV.txt` by default) containing the original CTD column structure and header metadata, but with **PSAL** and **TEMP** replaced by interpolated model values at each station and depth.
+**Cruise** and **LOCAL_CDI_ID** fields in the output are prefixed with `Model_` to clearly distinguish model-derived records.
+
  
 ![image](https://github.com/user-attachments/assets/3b4b0135-4705-40f8-982f-996690ecf37f)
