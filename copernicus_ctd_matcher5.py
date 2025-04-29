@@ -26,10 +26,12 @@ Configuration:
 # -------------------------------
 # 1. File paths
 # -------------------------------
-ctd_file    = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/haifa_uni_05.txt'
+#ctd_file    = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/haifa_uni_05.txt'
+ctd_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/2012-2020_UNRESTRICTED/haisec29_bsgas01.txt'
 temp_nc     = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/Copernicus/med-cmcc-tem-rean-m_1744206250724.nc'
 sal_nc      = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/Copernicus/med-cmcc-sal-rean-m_1744205630998.nc'
-output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/Coper_model_only.txt'
+#output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/Coper_model_only.txt'
+output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/haisec29_bsgas01_model_only.txt'
 out_dir = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/'
 # -------------------------------
 # ====================================================
@@ -80,8 +82,10 @@ cols       = col_header.split("\t")
 # column indices to overwrite
 i_cruise    = cols.index("Cruise")
 i_local_cdi = cols.index("LOCAL_CDI_ID")
-i_psal      = cols.index("PSAL")
-i_temp      = cols.index("TEMP")
+#i_psal      = cols.index("PSAL")
+#i_temp      = cols.index("TEMP")
+i_psal      = cols.index('PSALST01_UPPT')
+i_temp      = cols.index("TEMPS901_UPAA")
 
 # ====================================================
 #            LOAD & CLEAN CTD DATA
@@ -138,6 +142,7 @@ def nan_interp(vals, wts):
 # ====================================================
 #           PROCESS & WRITE OUTPUT FILE
 # ====================================================
+skipped = []
 with open(output_file, "w") as outf:
     # 1) write header and column line
     outf.writelines(header)
@@ -229,11 +234,24 @@ with open(output_file, "w") as outf:
     if use_ctd:
         for idx in range(len(starts) - 1):
             block = ctd.iloc[starts[idx] : starts[idx + 1]].reset_index(drop=True)
-            process_cast_block(df_block=block)
-
+            #process_cast_block(df_block=block)
+            try:
+                process_cast_block(df_block=block)
+            except ValueError as e:
+                skipped.append(str(e))
     # 3) process manual stations
     if use_manual:
         for meta in manual_stations:
-            process_cast_block(manual_meta=meta)
+            #process_cast_block(manual_meta=meta)
+            try:
+                process_cast_block(manual_meta=m)
+            except ValueError as e:
+                skipped.append(str(e))
+
+ #summary of skipped stations
+if skipped:
+    print("Skipped the following stations due to out-of-range:")
+    for msg in skipped:
+        print(" -", msg)
 
 print("Wrote combined ODV file to:", output_file)
