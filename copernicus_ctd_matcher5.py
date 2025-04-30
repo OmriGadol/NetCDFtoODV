@@ -39,6 +39,13 @@ out_dir = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-S
 # ====================================================
 use_ctd    = True    # If True, pull stations from the CTD file
 use_manual = False  # If True, append stations from manual_stations list
+apply_smoothing        = False  # If True, apply 1D running mean after (or without) vertical interp
+apply_vertical_interp  = True   # If True, upsample depths & linearly interpolate vertically
+vertical_levels        = 50     # Number of fine depth levels when vertical_interp is True
+smoothing_window  = 5      # window size (number of depth points) for running mean
+
+
+
 
 # Define manual stations here if use_manual=True
 # Each dict must have:
@@ -139,6 +146,13 @@ def nan_interp(vals, wts):
     W = sum(valid.values())
     return sum(vals[k] * valid[k] for k in valid) / W
 
+# smoothing helper
+def running_mean(x, N):
+    """Return N-point running mean of 1D array x (same length)."""
+    w = np.ones(N)/N
+    return np.convolve(x, w, mode='same')
+
+
 # ====================================================
 #           PROCESS & WRITE OUTPUT FILE
 # ====================================================
@@ -150,85 +164,119 @@ with open(output_file, "w") as outf:
 
     # helper to process a single cast (CTD or manual)
     def process_cast_block(df_block=None, manual_meta=None):
-        # If manual_meta is provided, build a temp DataFrame
+        """
+        Build a table of CTD or manual‐defined casts, interpolate the model
+        (thetao & so) either at original pressures or a fine vertical grid,
+        optionally smooth, and write every row out in ODV format.
+        """
+        # --- build the initial DataFrame for this cast ---
         if manual_meta:
             rows = []
-            for pres in manual_meta["PRESSURES"]:
+            for p in manual_meta['PRESSURES']:
                 row = {
-                    "Cruise": f"Model_{manual_meta['Cruise']}",
-                    "Station": manual_meta["Station"],
-                    "Type": "C",
-                    "yyyy-mm-ddThh:mm:ss.sss": manual_meta["datetime"],
-                    "Longitude [degrees_east]": manual_meta["Longitude [degrees_east]"],
-                    "Latitude [degrees_north]": manual_meta["Latitude [degrees_north]"],
-                    "LOCAL_CDI_ID": f"Model_{manual_meta['LOCAL_CDI_ID']}",
-                    "EDMO_code": "",
-                    "Bot. Depth [m]": "",
-                    "PRES": pres
+                    'Cruise':       f"Model_{manual_meta['Cruise']}",
+                    'Station':      manual_meta['Station'],
+                    'Type':         'C',
+                    'yyyy-mm-ddThh:mm:ss.sss': manual_meta['datetime'],
+                    'Longitude [degrees_east]': manual_meta['Longitude [degrees_east]'],
+                    'Latitude [degrees_north]': manual_meta['Latitude [degrees_north]'],
+                    'LOCAL_CDI_ID': f"Model_{manual_meta['LOCAL_CDI_ID']}",
+                    'EDMO_code':    '',
+                    'Bot. Depth [m]': '',
+                    'PRES':         p
                 }
-                # zero out any QV columns
+                # zero‐out any QV: columns
                 for c in cols:
-                    if c.startswith("QV:"):
+                    if c.startswith('QV:'):
                         row[c] = 0
                 rows.append(row)
             df = pd.DataFrame(rows)
-            df["datetime_parsed"] = pd.to_datetime(df["yyyy-mm-ddThh:mm:ss.sss"])
+            df['datetime_parsed'] = pd.to_datetime(df['yyyy-mm-ddThh:mm:ss.sss'])
         else:
             df = df_block.copy()
-            # prefix Cruise & LOCAL_CDI_ID for every CTD‑derived row
-            df["Cruise"] = df["Cruise"].apply(lambda x: f"Model_{x}")
-            df["LOCAL_CDI_ID"] = df["LOCAL_CDI_ID"].apply(lambda x: f"Model_{x}")
-        # validate time & coords
-        t0 = np.datetime64(df.loc[0, "datetime_parsed"])
-        if not (t_min <= t0 <= t_max):
-            raise ValueError(f"Date {t0} out of model time range")
-        lat0 = df.loc[0, "Latitude [degrees_north]"]
-        lon0 = df.loc[0, "Longitude [degrees_east]"]
-        if not (lat_min <= lat0 <= lat_max and lon_min <= lon0 <= lon_max):
-            raise ValueError(f"Coords ({lat0},{lon0}) out of model domain")
+            df['Cruise']       = df['Cruise'].apply(lambda x: f"Model_{x}")
+            df['LOCAL_CDI_ID'] = df['LOCAL_CDI_ID'].apply(lambda x: f"Model_{x}")
 
-        # nearest model time & grid cell
-        t_mod = ds_t["time"].sel(time=t0, method="nearest").values
+        # --- validate time & location ---
+        t0   = np.datetime64(df.loc[0, 'datetime_parsed'])
+        lat0 = df.loc[0, 'Latitude [degrees_north]']
+        lon0 = df.loc[0, 'Longitude [degrees_east]']
+        if t0 < t_min or t0 > t_max:
+            raise ValueError(f"{df.loc[0,'Station']}: date {t0} out of model time range")
+        if not (lat_min <= lat0 <= lat_max and lon_min <= lon0 <= lon_max):
+            raise ValueError(f"{df.loc[0,'Station']}: coords ({lat0},{lon0}) out of model domain")
+
+        # --- find nearest model time & horizontal grid cell ---
+        t_mod = ds_t['time'].sel(time=t0, method='nearest').values
         ilat  = np.searchsorted(lats, lat0)
         ilon  = np.searchsorted(lons, lon0)
-        y0, y1 = lats[ilat - 1], lats[ilat]
-        x0, x1 = lons[ilon - 1], lons[ilon]
+        y0, y1 = lats[ilat-1], lats[ilat]
+        x0, x1 = lons[ilon-1], lons[ilon]
 
-        # interpolate each depth
-        for _, row in df.iterrows():
-            pres = row["PRES"]
-            wts  = bilinear_w(lon0, lat0, x0, x1, y0, y1)
+        # --- 1) vertical up‐sample OR nearest‐depth fallback ---
+        if apply_vertical_interp:
+            p_min, p_max = df['PRES'].min(), df['PRES'].max()
+            fine_p       = np.linspace(p_min, p_max, vertical_levels)
+            da_t = ds_t['thetao'].sel(time=t_mod, method='nearest') \
+                        .interp(latitude=lat0, longitude=lon0, depth=fine_p)
+            da_s = ds_s['so']  .sel(time=t_mod, method='nearest') \
+                        .interp(latitude=lat0, longitude=lon0, depth=fine_p)
+            temps = da_t.values
+            psals = da_s.values
+            depths = fine_p
+        else:
+            temps, psals, depths = [], [], df['PRES'].values
+            for _, row in df.iterrows():
+                pres = row['PRES']
+                wts  = bilinear_w(lon0, lat0, x0, x1, y0, y1)
+                # sample four corners
+                Tvals = {
+                    'll': sample(ds_t,'thetao',t_mod,y0,x0,pres),
+                    'lr': sample(ds_t,'thetao',t_mod,y0,x1,pres),
+                    'ul': sample(ds_t,'thetao',t_mod,y1,x0,pres),
+                    'ur': sample(ds_t,'thetao',t_mod,y1,x1,pres),
+                }
+                Svals = {
+                    'll': sample(ds_s,'so',  t_mod,y0,x0,pres),
+                    'lr': sample(ds_s,'so',  t_mod,y0,x1,pres),
+                    'ul': sample(ds_s,'so',  t_mod,y1,x0,pres),
+                    'ur': sample(ds_s,'so',  t_mod,y1,x1,pres),
+                }
+                temps.append(nan_interp(Tvals, wts))
+                psals.append(nan_interp(Svals, wts))
+            temps = np.array(temps)
+            psals = np.array(psals)
 
-            Tvals = {
-                "ll": sample(ds_t, "thetao", t_mod, y0, x0, pres),
-                "lr": sample(ds_t, "thetao", t_mod, y0, x1, pres),
-                "ul": sample(ds_t, "thetao", t_mod, y1, x0, pres),
-                "ur": sample(ds_t, "thetao", t_mod, y1, x1, pres),
-            }
-            Svals = {
-                "ll": sample(ds_s, "so", t_mod, y0, x0, pres),
-                "lr": sample(ds_s, "so", t_mod, y0, x1, pres),
-                "ul": sample(ds_s, "so", t_mod, y1, x0, pres),
-                "ur": sample(ds_s, "so", t_mod, y1, x1, pres),
-            }
+        # --- 2) optional smoothing ---
+        if apply_smoothing:
+            temps = running_mean(temps, smoothing_window)
+            psals = running_mean(psals, smoothing_window)
 
-            Tmod = nan_interp(Tvals, wts)
-            Smod = nan_interp(Svals, wts)
-
+        # --- 3) write every (depth, temp, psal) row ---
+        for p, Tm, Sm in zip(depths, temps, psals):
+            # reuse first‐row metadata, override PRES & values
+            meta = df.iloc[0].to_dict()
+            meta['PRES'] = p
             out = []
             for k, col in enumerate(cols):
                 if k == i_cruise:
-                    out.append(row["Cruise"])
+                    out.append(meta['Cruise'])
                 elif k == i_local_cdi:
-                    out.append(row["LOCAL_CDI_ID"])
+                    out.append(meta['LOCAL_CDI_ID'])
                 elif k == i_psal:
-                    out.append(f"{Smod:.4f}")
+                    out.append(f"{Sm:.4f}")
                 elif k == i_temp:
-                    out.append(f"{Tmod:.4f}")
+                    out.append(f"{Tm:.4f}")
+                elif col == 'PRES':
+                    out.append(str(p))
                 else:
-                    val = row.get(col, "")
-                    out.append("" if pd.isna(val) else str(val))
+                    v = meta.get(col, '')
+                    out.append('' if pd.isna(v) else str(v))
             outf.write("\t".join(out) + "\n")
+
+
+
+
 
     # 2) process CTD file casts
     if use_ctd:
