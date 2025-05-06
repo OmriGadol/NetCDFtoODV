@@ -76,6 +76,33 @@ output_file = '/path/to/all_model_only_fullODV.txt'
 use_ctd               = True     # Read casts from CTD file
 use_manual            = False    # Append manual_stations list
 
+
+ ## Configuration
+
+ All user-configurable options live near the top of `Copernicus_ctd_matcher.py` under **USER OPTIONS**.
+
+### CSV Points Input
+
+If you want to pull your station list from a simple CSV file instead of (or in addition to) the CTD file or hard-coded list, use these flags:
+
+```python
+use_ctd        = False        # skip CTD file entirely
+use_manual     = False        # skip the built-in manual_stations list
+use_manual_csv = True         # read only from CSV
+manual_csv_path = 'path/to/your_points.csv'
+```
+
+Your CSV must have these columns:
+
+| Station | Cruise      | LOCAL_CDI_ID | datetime               | Latitude [degrees_north] | Longitude [degrees_east] | PRESSURES       |
+|---------|-------------|--------------|------------------------|--------------------------|--------------------------|-----------------|
+| MAN1    | CustomCast1 | Manual001    | 2013-10-23T07:00:00.000| 32.85                    | 35.02                    | 1;10;20;50;100  |
+
+– where PRESSURES is a semicolon-separated list of dbar levels.
+
+
+
+
 # Vertical interpolation
 apply_vertical_interp = True     # Upsample depths via linear interpolation
 vertical_levels       = 50       # Number of fine-depth levels

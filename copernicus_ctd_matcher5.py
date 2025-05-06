@@ -37,8 +37,9 @@ out_dir = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-S
 # ====================================================
 #                USER OPTIONS
 # ====================================================
-use_ctd    = True    # If True, pull stations from the CTD file
-use_manual = False  # If True, append stations from manual_stations list
+use_ctd    = False    # If True, pull stations from the CTD file
+use_manual = False  # If True, append hard-codded stations from manual_stations list
+use_manual_csv = True  # If True, read extra stations from CSV file
 apply_smoothing        = False  # If True, apply 1D running mean after (or without) vertical interp
 apply_vertical_interp  = True   # If True, upsample depths & linearly interpolate vertically
 vertical_levels        = 50     # Number of fine depth levels when vertical_interp is True
@@ -53,7 +54,7 @@ smoothing_window  = 5      # window size (number of depth points) for running me
 #   'datetime' (string, same format as CTD file),
 #   'Latitude [degrees_north]', 'Longitude [degrees_east]',
 #   'PRESSURES' (list of dbar levels)
-manual_stations = [
+#manual_stations = [
     # Example:
     # {
     #   'Station': 'MAN1',
@@ -73,8 +74,10 @@ manual_stations = [
      #  'Longitude [degrees_east]': 34.80,
      #  'PRESSURES': [1, 10, 20, 50, 100, 120, 150, 200, 220]
      #},
-]
-
+#]
+ #Path to your CSV of custom points
+# CSV format described in README
+manual_csv_path = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Batymetry/00048GEOM.csv'
 # ====================================================
 #        READ ORIGINAL ODV HEADER & COLUMNS
 # ====================================================
@@ -288,13 +291,28 @@ with open(output_file, "w") as outf:
             except ValueError as e:
                 skipped.append(str(e))
     # 3) process manual stations
+    # Option A: hard‐coded manual stations
     if use_manual:
         for meta in manual_stations:
-            #process_cast_block(manual_meta=meta)
-            try:
-                process_cast_block(manual_meta=m)
-            except ValueError as e:
-                skipped.append(str(e))
+                        process_cast_block(manual_meta=meta)
+    #Option B: read extra stations from a simple CSV
+
+    if use_manual_csv:
+        import csv
+        df_pts = pd.read_csv(manual_csv_path, sep=',')
+        for _, row in df_pts.iterrows():
+              # parse the semi‐colon list of pressures
+                    pressures = [float(x) for x in str(row['PRESSURES']).split(';') if x]
+                    meta = {
+                            'Station': row['Station'],
+                            'Cruise': row['Cruise'],
+                            'LOCAL_CDI_ID': row['LOCAL_CDI_ID'],
+                            'datetime': row['datetime'],
+                            'Latitude [degrees_north]': float(row['Latitude [degrees_north]']),
+                            'Longitude [degrees_east]': float(row['Longitude [degrees_east]']),
+                            'PRESSURES': pressures
+                    }
+                    process_cast_block(manual_meta=meta)
 
  #summary of skipped stations
 if skipped:
