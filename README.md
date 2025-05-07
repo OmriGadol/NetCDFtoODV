@@ -1,3 +1,5 @@
+from copernicus_ctd_matcher5 import bathy_tif
+
 # Copernicus_ctd_matcher
 
 **Version:** 1.0.0  
@@ -75,6 +77,10 @@ output_file = '/path/to/all_model_only_fullODV.txt'
 # Station sources
 use_ctd               = True     # Read casts from CTD file
 use_manual            = False    # Append manual_stations list
+# Bathymetry (Geotiff)
+use_bathymetry        = True     # Sample bathymetry from Geotiff
+bathy_tif             = '/path/to/bathymetry.tif'
+
 
 
  ## Configuration
@@ -91,6 +97,16 @@ use_manual     = False        # skip the built-in manual_stations list
 use_manual_csv = True         # read only from CSV
 manual_csv_path = 'path/to/your_points.csv'
 ```
+
+## Bathymetry Support
+
+#If `use_bathy=True`, the script will:
+1. Open the GeoTIFF file specified by `bathy_tif`.  
+2. For each station (CTD, manual, or CSV), sample the seafloor depth at its lon/lat.  
+3. Convert any negative elevation values to positive metres (water depth).  
+4. Overwrite the `Bot. Depth [m]` column in the output with that depth.  
+
++ODV expects **positive** water depths, so this makes your bottom depths compatible.
 
 Your CSV must have these columns:
 

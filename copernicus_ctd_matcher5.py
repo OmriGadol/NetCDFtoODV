@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import xarray as xr
 import numpy as np
+import rasterio
 from datetime import datetime
 """
 ===============================================================================
@@ -33,6 +34,7 @@ sal_nc      = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/G
 #output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/Coper_model_only.txt'
 output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/haisec29_bsgas01_model_only.txt'
 out_dir = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/'
+bathy_tif = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Batymetry/Israel_50m_scaled.tif'
 # -------------------------------
 # ====================================================
 #                USER OPTIONS
@@ -40,6 +42,7 @@ out_dir = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-S
 use_ctd    = False    # If True, pull stations from the CTD file
 use_manual = False  # If True, append hard-codded stations from manual_stations list
 use_manual_csv = True  # If True, read extra stations from CSV file
+use_bathy = True     # If True, sample bottom depth from a GeoTIFF
 apply_smoothing        = False  # If True, apply 1D running mean after (or without) vertical interp
 apply_vertical_interp  = True   # If True, upsample depths & linearly interpolate vertically
 vertical_levels        = 50     # Number of fine depth levels when vertical_interp is True
@@ -115,6 +118,10 @@ starts.append(len(ctd))  # sentinel
 # ====================================================
 ds_t = xr.open_dataset(temp_nc)
 ds_s = xr.open_dataset(sal_nc)
+if use_bathy:
+    # open the GeoTIFF once
+    bathy_src = rasterio.open(bathy_tif)
+
 
 t_min, t_max       = ds_t.time.min().values, ds_t.time.max().values
 lat_min, lat_max   = ds_t.latitude.min().values, ds_t.latitude.max().values
@@ -199,6 +206,18 @@ with open(output_file, "w") as outf:
             df = df_block.copy()
             df['Cruise']       = df['Cruise'].apply(lambda x: f"Model_{x}")
             df['LOCAL_CDI_ID'] = df['LOCAL_CDI_ID'].apply(lambda x: f"Model_{x}")
+
+        # --- (NEW) assign seafloor depth from GeoTIFF if requested ---
+        if use_bathy:
+            #get station coordinates
+            lon_b = float(df.loc[0, 'Longitude [degrees_east]'])
+            lat_b = float(df.loc[0, 'Latitude [degrees_north]'])
+            # smaple the single pixel under (lon,lat)
+            raw_depth = list(bathy_src.sample([(lon_b, lat_b)]))[0][0]
+            # GeoTIFF depth is often negative; make it positive
+            floor_depth = abs(raw_depth)
+            # overwrite the Bot. Depth column for all rows
+            df['Bot. Depth [m]'] = floor_depth
 
         # --- validate time & location ---
         t0   = np.datetime64(df.loc[0, 'datetime_parsed'])
