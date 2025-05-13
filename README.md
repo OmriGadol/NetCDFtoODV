@@ -1,23 +1,21 @@
-from copernicus_ctd_matcher5 import bathy_tif
+# Copernicus CTD Matcher
 
-# Copernicus_ctd_matcher
-
-**Version:** 1.0.0  
-**Date:** 2025-04-19  
+**Version:** 1.0.1  
+**Date:** 2025-05-XX  
 **Author:** OpenAI ChatGPT
 
 ---
 
 ## Overview
 
-`Copernicus_ctd_matcher.py` reads a CTD ODV-format text file and Copernicus model NetCDF outputs (temperature & salinity), interpolates the model at each CTD station’s location and depth(s), and writes a combined ODV-compatible output file containing **only** the model-derived casts.
+`Copernicus_ctd_matcher.py`  
+Reads CTD casts (from an ODV-formatted file, CSV, or manual list), samples Copernicus model temperature (`thetao`) and salinity (`so`) at each station’s location and depth(s), and writes a single ODV-compatible output containing **only** the model-derived casts.  
 
-Key capabilities:
-- Process all casts from a CTD file or a user-defined list of manual stations  
-- Skip any stations outside the model’s spatial/time bounds (non-fatal, summary printed)  
-- Prefix `Cruise` & `LOCAL_CDI_ID` fields with `Model_` for clarity  
-- **Optional vertical interpolation**: sample at a dense depth grid via linear interpolation  
-- **Optional smoothing**: apply an N-point running mean to reduce step artifacts  
+Optional features (toggle via flags):  
+- **Bathymetry sampling** from GeoTIFF  
+- **Vertical interpolation** for fine depth grids  
+- **Running-mean smoothing** of profiles  
+- **Pycnocline detection** and **“sharpening”** around the strongest density gradient  
 
 ---
 
@@ -27,11 +25,13 @@ Key capabilities:
 - pandas  
 - xarray  
 - numpy  
+- rasterio  
+- gsw (TEOS‑10 routines)
 
-Install via:
+Install with:
 
 ```bash
-pip install pandas xarray numpy
+pip install pandas xarray numpy rasterio gsw
 ```
 
 ---
@@ -43,7 +43,7 @@ pip install pandas xarray numpy
 ├── Copernicus_ctd_matcher.py        # Main script
 ├── README.md                        # This file
 ├── requirements.txt                 # Dependency list
-└── data/                            # Example CTD & NetCDF inputs
+└── data/                            # Example inputs
 ```
 
 ---
@@ -54,83 +54,61 @@ pip install pandas xarray numpy
 python Copernicus_ctd_matcher.py
 ```
 
-By default, the script reads the CTD file and writes an output file as specified by `output_file` in the configuration.
-
 ---
 
 ## Configuration
 
-All user-configurable options live near the top of `Copernicus_ctd_matcher.py` under **USER OPTIONS**.
+All options live near the top of `Copernicus_ctd_matcher.py` under **USER OPTIONS**.
 
-### File Paths
-
-```python
-ctd_file    = '/path/to/original_ctd.txt'
-temp_nc     = '/path/to/temperature_model.nc'
-sal_nc      = '/path/to/salinity_model.nc'
-output_file = '/path/to/all_model_only_fullODV.txt'
-```
-
-### Flags
+### File paths
 
 ```python
-# Station sources
-use_ctd               = True     # Read casts from CTD file
-use_manual            = False    # Append manual_stations list
-# Bathymetry (Geotiff)
-use_bathymetry        = True     # Sample bathymetry from Geotiff
-bathy_tif             = '/path/to/bathymetry.tif'
+ctd_file        = '/path/to/original_ctd.txt'
+temp_nc         = '/path/to/temperature_model.nc'
+sal_nc          = '/path/to/salinity_model.nc'
+output_file     = '/path/to/output_fullODV.txt'
+bathy_tif       = '/path/to/bathymetry.tif'
+manual_csv_path = '/path/to/points_list.csv'
+```
 
-
-
- ## Configuration
-
- All user-configurable options live near the top of `Copernicus_ctd_matcher.py` under **USER OPTIONS**.
-
-### CSV Points Input
-
-If you want to pull your station list from a simple CSV file instead of (or in addition to) the CTD file or hard-coded list, use these flags:
+### Station input sources
 
 ```python
-use_ctd        = False        # skip CTD file entirely
-use_manual     = False        # skip the built-in manual_stations list
-use_manual_csv = True         # read only from CSV
-manual_csv_path = 'path/to/your_points.csv'
+use_ctd        = True    # read casts from CTD file
+use_manual     = False   # append hard-coded `manual_stations`
+use_manual_csv = False   # read station records from CSV
 ```
 
-## Bathymetry Support
+### Bathymetry
 
-#If `use_bathy=True`, the script will:
-1. Open the GeoTIFF file specified by `bathy_tif`.  
-2. For each station (CTD, manual, or CSV), sample the seafloor depth at its lon/lat.  
-3. Convert any negative elevation values to positive metres (water depth).  
-4. Overwrite the `Bot. Depth [m]` column in the output with that depth.  
-
-+ODV expects **positive** water depths, so this makes your bottom depths compatible.
-
-Your CSV must have these columns:
-
-| Station | Cruise      | LOCAL_CDI_ID | datetime               | Latitude [degrees_north] | Longitude [degrees_east] | PRESSURES       |
-|---------|-------------|--------------|------------------------|--------------------------|--------------------------|-----------------|
-| MAN1    | CustomCast1 | Manual001    | 2013-10-23T07:00:00.000| 32.85                    | 35.02                    | 1;10;20;50;100  |
-
-– where PRESSURES is a semicolon-separated list of dbar levels.
-
-
-
-
-# Vertical interpolation
-apply_vertical_interp = True     # Upsample depths via linear interpolation
-vertical_levels       = 50       # Number of fine-depth levels
-
-# Smoothing
-apply_smoothing       = False    # Apply running-mean filter
-smoothing_window      = 5        # Window size for running mean
+```python
+use_bathy = True    # sample bottom depth from bathymetry GeoTIFF
 ```
 
-### Manual Stations
+### Vertical interpolation
 
-Define a list of dictionaries if `use_manual=True`:
+```python
+apply_vertical_interp = True   # upsample depths via linear interp
+vertical_levels       = 50     # number of fine depth levels
+```
+
+### Smoothing
+
+```python
+apply_smoothing  = False  # apply running-mean filter
+smoothing_window = 5      # window size
+```
+
+### Pycnocline detection & sharpening
+
+```python
+compute_pycnocline = False  # find the depth of maximum dρ/dz
+sharpen_pyc        = False  # add extra levels around detected pycnocline
+pyc_window         = 5.0    # ± meters around pycnocline for extra levels
+pyc_npoints        = 7      # number of extra depth points in window
+```
+
+### Manual stations (if `use_manual=True`)
 
 ```python
 manual_stations = [
@@ -146,20 +124,26 @@ manual_stations = [
 ]
 ```
 
+### CSV format (if `use_manual_csv=True`)
+
+| Station | Cruise      | LOCAL_CDI_ID | datetime               | Latitude [°N] | Longitude [°E] | PRESSURES       |
+|---------|-------------|--------------|------------------------|---------------|----------------|-----------------|
+| MAN1    | CustomCast1 | Manual001    | 2013-10-23T07:00:00.000| 32.85         | 35.02          | 1;10;20;50;100  |
+
+- `PRESSURES` may be comma- or semicolon-separated.
+
 ---
 
 ## Output
 
-- **Header & columns**: preserved from the original CTD file (including metadata lines)  
-- **Cruise** and **LOCAL_CDI_ID**: prefixed with `Model_`  
-- **PSAL** and **TEMP**: replaced by model-derived values  
-- **Skipped stations**: any cast outside model bounds is omitted, with its station ID & reason printed at the end.
-
-Default output filename: `all_model_only_fullODV.txt`.
+- Preserves header & column order from original CTD file  
+- Prefixes `Cruise` & `LOCAL_CDI_ID` with `Model_`  
+- Replaces PSAL & TEMP with model values  
+- Overwrites `Bot. Depth [m]` if bathymetry sampling is enabled  
+- Skips any station out of model bounds (reports at end)  
 
 ---
 
 ## License
 
 This script is provided under the MIT License.  
-Feel free to modify and redistribute.
