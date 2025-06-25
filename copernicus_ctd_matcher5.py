@@ -32,13 +32,14 @@ Configuration:
 # -------------------------------
 #ctd_file    = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/haifa_uni_05.txt'
 ctd_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/2012-2020_UNRESTRICTED/haisec29_bsgas01.txt'
-temp_nc     = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/Copernicus/med-cmcc-tem-rean-m_1744206250724.nc'
-sal_nc      = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/Copernicus/med-cmcc-sal-rean-m_1744205630998.nc'
+temp_nc     = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/Copernicus/2014/med-cmcc-tem-rean-d_1747652880573.nc'
+sal_nc      = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/Copernicus/2014/med-cmcc-sal-rean-d_1747653098966.nc'
 #output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/Coper_model_only.txt'
-output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/ModelBasedProjected_PyconclineMax.txt'
+output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/ModelBasedProjected_30-10-14_Daily_00045.txt'
 out_dir = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/'
+slope_tif = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Batymetry/Israel_50m_slope.tif'
 bathy_tif = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Batymetry/Israel_50m_scaled.tif'
-manual_csv_path = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Batymetry/00048GEOM.csv'
+manual_csv_path = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Batymetry/00045GEOM.csv'
 # -------------------------------
 # ====================================================
 #                USER OPTIONS
@@ -47,6 +48,7 @@ use_ctd    = False    # If True, pull stations from the CTD file
 use_manual = False  # If True, append hard-codded stations from manual_stations list
 use_manual_csv = True  # If True, read extra stations from CSV file
 use_bathy = True     # If True, sample bottom depth from a GeoTIFF
+use_slope       = True    # If True, sample seafloor slope at each station
 apply_smoothing        = False  # If True, apply 1D running mean after (or without) vertical interp
 compute_pycnocline     = True  # <— If True, locate depth of max dρ/dz
 apply_vertical_interp  = True   # If True, upsample depths & linearly interpolate vertically
@@ -97,13 +99,15 @@ with open(ctd_file, 'r') as f:
     lines = f.readlines()
 hdr_idx    = next(i for i, L in enumerate(lines) if L.startswith("Cruise"))
 header     = lines[:hdr_idx]
-col_header = lines[hdr_idx].rstrip("\n")
+col_header = lines[hdr_idx].rstrip("\n") + "\tSlope [deg]"
 cols       = col_header.split("\t")
 
 i_cruise    = cols.index("Cruise")
 i_local_cdi = cols.index("LOCAL_CDI_ID")
 i_psal      = cols.index('PSALST01_UPPT')
 i_temp      = cols.index("TEMPS901_UPAA")
+i_slope     = cols.index("Slope [deg]")
+
 
 # -------------------------------
 # Load & clean CTD data
@@ -121,6 +125,8 @@ ds_t = xr.open_dataset(temp_nc)
 ds_s = xr.open_dataset(sal_nc)
 if use_bathy:
     bathy_src = rasterio.open(bathy_tif)
+if use_slope:
+    slope_src = rasterio.open(slope_tif)
 
 # model ranges
 t_min, t_max     = ds_t.time.min().values, ds_t.time.max().values
@@ -193,6 +199,15 @@ with open(output_file, "w") as outf:
             rawd = bathy_src.sample([(lon0,lat0)]).__next__()[0]
             df['Bot. Depth [m]'] = abs(rawd)
 
+        # --- NEW: sample seafloor slope at this lon/lat ---
+        # assign slope if requested
+
+        if use_slope:
+            lon0 = float(df.loc[0, 'Longitude [degrees_east]'])
+            lat0 = float(df.loc[0, 'Latitude [degrees_north]'])
+            rawslope = slope_src.sample([(lon0, lat0)]).__next__()[0]
+            df['Slope [deg]'] = float(rawslope)
+
         # validate
         t0 = np.datetime64(df.loc[0,'datetime_parsed'])
         lat0, lon0 = df.loc[0,'Latitude [degrees_north]'], df.loc[0,'Longitude [degrees_east]']
@@ -264,21 +279,31 @@ with open(output_file, "w") as outf:
             temps = running_mean(temps, smoothing_window)
             psals = running_mean(psals, smoothing_window)
 
-        # 5) write out
+        # 5) write out: all original columns, but overwrite PSAL/TEMP/(optional)Slope/PRES
         for p, Tm, Sm in zip(depths, temps, psals):
+            # grab the first-row metadata and override PRES and, if used, Slope
             meta = df.iloc[0].to_dict()
             meta['PRES'] = p
-            out=[]
-            for k,col in enumerate(cols):
-                if k==i_cruise:    out.append(meta['Cruise'])
-                elif k==i_local_cdi: out.append(meta['LOCAL_CDI_ID'])
-                elif k==i_psal:    out.append(f"{Sm:.4f}")
-                elif k==i_temp:    out.append(f"{Tm:.4f}")
-                elif col=='PRES':  out.append(str(p))
+            if use_slope:
+                meta['Slope [deg]'] = df.loc[0, 'Slope [deg]']
+
+            out = []
+            for k, col in enumerate(cols):
+                if k == i_cruise:
+                    out.append(meta['Cruise'])
+                elif k == i_local_cdi:
+                    out.append(meta['LOCAL_CDI_ID'])
+                elif k == i_psal:
+                    out.append(f"{Sm:.4f}")
+                elif k == i_temp:
+                    out.append(f"{Tm:.4f}")
+                elif use_slope and k == i_slope:
+                    out.append(f"{meta['Slope [deg]']:.1f}")
                 else:
-                    v=meta.get(col,'')
-                    out.append('' if pd.isna(v) else str(v))
-            outf.write("\t".join(out)+"\n")
+                    val = meta.get(col, "")
+                    out.append("" if pd.isna(val) else str(val))
+
+            outf.write("\t".join(out) + "\n")
 
 
     # process CTD casts
