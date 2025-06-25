@@ -122,7 +122,10 @@ starts.append(len(ctd))
 # Open model datasets & bathy
 # -------------------------------
 ds_t = xr.open_dataset(temp_nc)
-ds_s = xr.open_dataset(sal_nc)
+ds_s = (
+    xr.open_dataset(sal_nc).transpose("time", "latitude", "longitude", "depth"))
+
+
 if use_bathy:
     bathy_src = rasterio.open(bathy_tif)
 if use_slope:
@@ -168,6 +171,7 @@ with open(output_file, "w") as outf:
     outf.write(col_header+"\n")
 
     def process_cast_block(df_block=None, manual_meta=None):
+
         # build df for this cast
         if manual_meta:
             rows=[]
@@ -247,6 +251,11 @@ with open(output_file, "w") as outf:
                 psals.append(nan_interp(Svals,w))
             temps = np.array(temps); psals = np.array(psals)
 
+        # ─── NEW: drop any leading/trailing NaNs ───
+        good = (~np.isnan(temps)) & (~np.isnan(psals))
+        depths = depths[good]
+        temps = temps[good]
+        psals = psals[good]
         original_depths = depths.copy()
         original_temps  = temps.copy()
         original_psals  = psals.copy()
