@@ -31,32 +31,33 @@ Configuration:
 # 1. File paths
 # -------------------------------
 #ctd_file    = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/haifa_uni_05.txt'
-ctd_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/HaiSec35_ODV.txt'
-temp_nc     = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/Copernicus/med-cmcc-tem-rean-m_1744206250724.nc'
-sal_nc      = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/Copernicus/med-cmcc-sal-rean-m_1744205630998.nc'
+ctd_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/2012-2020_UNRESTRICTED/haisec29_bsgas01.txt'
+temp_nc     = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/2008/med-cmcc-tem-rean-d_1758453388404.nc'
+sal_nc      = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/2008/med-cmcc-sal-rean-d_1758453367045.nc'
 #output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/Coper_model_only.txt'
-output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/ModelBasedForHaiSec.txt'
+output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/ModelBasedProjected_02-11-08_Daily_scmsCROSS.txt'
 out_dir = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/'
 slope_tif = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Batymetry/Israel_50m_slope.tif'
 bathy_tif = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Batymetry/Israel_50m_scaled.tif'
-manual_csv_path = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Batymetry/00045GEOM.csv'
+manual_csv_path = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Batymetry/scms08_crossGEOM.csv'
 # -------------------------------
 # ====================================================
 #                USER OPTIONS
 # ====================================================
-use_ctd    = True    # If True, pull stations from the CTD file
+use_ctd    = False    # If True, pull stations from the CTD file
 use_manual = False  # If True, append hard-codded stations from manual_stations list
-use_manual_csv = False  # If True, read extra stations from CSV file
-use_bathy = False     # If True, sample bottom depth from a GeoTIFF
-use_slope       = False    # If True, sample seafloor slope at each station
+use_manual_csv = True  # If True, read extra stations from CSV file
+use_bathy = True     # If True, sample bottom depth from a GeoTIFF
+use_slope       = True    # If True, sample seafloor slope at each station
 apply_smoothing        = False  # If True, apply 1D running mean after (or without) vertical interp
-compute_pycnocline     = False  # <— If True, locate depth of max dρ/dz
-apply_vertical_interp  = False   # If True, upsample depths & linearly interpolate vertically
-sharpen_pyc    = False       # If True, add extra depth points around the detected pycnocline
+compute_pycnocline     = True  # <— If True, locate depth of max dρ/dz
+apply_vertical_interp  = True   # If True, upsample depths & linearly interpolate vertically
+sharpen_pyc    = True       # If True, add extra depth points around the detected pycnocline
 pyc_window     = 5.0        # ± meters around pycnocline to insert extra levels
 pyc_npoints    = 7          # how many extra levels in that window
 vertical_levels        = 50     # Number of fine depth levels when vertical_interp is True
 smoothing_window  = 5      # window size (number of depth points) for running mean
+
 
 
 
@@ -103,24 +104,9 @@ col_header = lines[hdr_idx].rstrip("\n") + "\tSlope [deg]"
 cols       = col_header.split("\t")
 
 i_cruise    = cols.index("Cruise")
-# after you build `cols` from the header:
-try:
-    i_local_cdi = cols.index("LOCAL_CDI_ID")
-except ValueError:
-    i_local_cdi = None  # not present; we'll ignore it
-# salinity column index (prefer SDN code, else human-readable fallback)
-i_psal = (
-    cols.index('PSALST01_UPPT') if 'PSALST01_UPPT' in cols
-    else cols.index('Salinity [psu]') if 'Salinity [psu]' in cols
-    else None
-)
-
-i_temp = (
-    cols.index('TEMPST01_UPPT') if 'TEMPST01_UPPT' in cols
-    else cols.index('Temperature [C]') if 'Temperature [C]' in cols
-    else None
-)
-
+i_local_cdi = cols.index("LOCAL_CDI_ID")
+i_psal      = cols.index('PSALST01_UPPT')
+i_temp      = cols.index("TEMPS901_UPAA")
 i_slope     = cols.index("Slope [deg]")
 
 
@@ -129,25 +115,7 @@ i_slope     = cols.index("Slope [deg]")
 # -------------------------------
 raw = pd.read_csv(ctd_file, sep="\t", skiprows=hdr_idx)
 ctd = raw.ffill()
-
-
-# replace the old single-line parse with this minimal fallback
-cols_lower = {c.lower(): c for c in ctd.columns}
-iso_col = cols_lower.get("yyyy-mm-ddthh:mm:ss.sss") or cols_lower.get("yyyy-mm-ddthh:mm:ss")
-
-if iso_col:
-    ctd["datetime_parsed"] = pd.to_datetime(ctd[iso_col], errors="coerce")
-else:
-    date_col = next(c for c in ctd.columns if "mon/day/yr" in c.lower())
-    time_col = next(c for c in ctd.columns if "hh:mm" in c.lower())
-    ctd["datetime_parsed"] = pd.to_datetime(
-        ctd[date_col].astype(str) + " " + ctd[time_col].astype(str),
-        format="%m/%d/%Y %H:%M",
-        errors="coerce"
-    )
-
-
-
+ctd["datetime_parsed"] = pd.to_datetime(ctd["yyyy-mm-ddThh:mm:ss.sss"])
 starts = raw.index[raw["Type"] == "C"].tolist()
 starts.append(len(ctd))
 
@@ -155,8 +123,7 @@ starts.append(len(ctd))
 # Open model datasets & bathy
 # -------------------------------
 ds_t = xr.open_dataset(temp_nc)
-ds_s = (
-    xr.open_dataset(sal_nc).transpose("time", "latitude", "longitude", "depth"))
+ds_s = xr.open_dataset(sal_nc) # keep native order; named selection works anyway
 
 
 if use_bathy:
@@ -195,6 +162,14 @@ def nan_interp(vals, wts):
     W = sum(valid.values())
     return sum(vals[k]*valid[k] for k in valid)/W
 
+def sample_bilinear(ds, var, t, lat, lon, pres):
+    # nearest in time, linear in lat/lon/depth
+    da = ds[var].sel(time=t, method='nearest').interp(
+        latitude=lat, longitude=lon, depth=pres
+    )
+    return float(da.values)
+
+
 # -------------------------------
 # Process & write output
 # -------------------------------
@@ -227,30 +202,12 @@ with open(output_file, "w") as outf:
         else:
             df = df_block.copy()
             df['Cruise']       = df['Cruise'].apply(lambda x:f"Model_{x}")
-            if 'LOCAL_CDI_ID' in df.columns:
-                df['LOCAL_CDI_ID'] = 'Model_' + df['LOCAL_CDI_ID'].astype(str)
-            # else: silently skip if the column doesn't exist
+            df['LOCAL_CDI_ID'] = df['LOCAL_CDI_ID'].apply(lambda x:f"Model_{x}")
 
         # assign bathy as bottom depth
         if use_bathy:
-            # make sure you have: import pandas as pd
-            lon_candidates = [
-                'Longitude [degrees_east]', 'Lon [degrees_east]', 'Lon (?E)',
-                'Longitude [°E]', 'Longitude [degE]', 'Longitude', 'Lon (°E)', 'Lon'
-            ]
-            lat_candidates = [
-                'Latitude [degrees_north]', 'Lat [degrees_north]', 'Lat (?N)',
-                'Latitude [°N]', 'Latitude [degN]', 'Latitude', 'Lat (°N)', 'Lat'
-            ]
-
-            lon_col = next((c for c in lon_candidates if c in df.columns), None)
-            lat_col = next((c for c in lat_candidates if c in df.columns), None)
-            if lon_col is None or lat_col is None:
-                raise KeyError(f"Couldn’t find lon/lat columns. Available: {list(df.columns)}")
-
-            lon0 = float(pd.to_numeric(df.loc[df.index[0], lon_col], errors='coerce'))
-            lat0 = float(pd.to_numeric(df.loc[df.index[0], lat_col], errors='coerce'))
-
+            lon0 = float(df.loc[0,'Longitude [degrees_east]'])
+            lat0 = float(df.loc[0,'Latitude [degrees_north]'])
             rawd = bathy_src.sample([(lon0,lat0)]).__next__()[0]
             df['Bot. Depth [m]'] = abs(rawd)
 
@@ -289,18 +246,14 @@ with open(output_file, "w") as outf:
             temps   = da_t.values; psals = da_s.values; depths = fine_p
         else:
             temps, psals, depths = [], [], df['PRES'].values
-            for _,r in df.iterrows():
-                p = r['PRES']
-                w = bilinear_w(lon0,lat0,x0,x1,y0,y1)
-                Tvals = {k: sample(ds_t,'thetao',t_mod,y0 if k in ['ll','lr'] else y1,
-                                   x0 if k in ['ll','ul'] else x1, p)
-                         for k in ['ll','lr','ul','ur']}
-                Svals = {k: sample(ds_s,'so',  t_mod,y0 if k in ['ll','lr'] else y1,
-                                   x0 if k in ['ll','ul'] else x1, p)
-                         for k in ['ll','lr','ul','ur']}
-                temps.append(nan_interp(Tvals,w))
-                psals.append(nan_interp(Svals,w))
-            temps = np.array(temps); psals = np.array(psals)
+            for _, r in df.iterrows():
+                p = float(r['PRES'])
+                Tm = sample_bilinear(ds_t, 'thetao', t_mod, float(lat0), float(lon0), p)
+                Sm = sample_bilinear(ds_s, 'so', t_mod, float(lat0), float(lon0), p)
+                temps.append(Tm)
+                psals.append(Sm)
+            temps = np.array(temps)
+            psals = np.array(psals)
 
         # ─── NEW: drop any leading/trailing NaNs ───
         good = (~np.isnan(temps)) & (~np.isnan(psals))
