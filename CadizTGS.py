@@ -32,14 +32,14 @@ Configuration:
 # -------------------------------
 #ctd_file    = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/haifa_uni_05.txt'
 ctd_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/2012-2020_UNRESTRICTED/haisec29_bsgas01.txt'
-temp_nc     = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/Cadiz/Copernicus/cmems_mod_ibi_phy_my_0.083deg-3D_P1D-m_1758984756908.nc'
-sal_nc      = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/Cadiz/Copernicus/cmems_mod_ibi_phy_my_0.083deg-3D_P1D-m_1758985027804.nc'
+temp_nc     = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/Cadiz/Copernicus/PD00609/cmems_mod_ibi_phy_my_0.083deg-3D_P1D-m_1760007881475.nc'
+sal_nc      = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/Cadiz/Copernicus/PD00609/cmems_mod_ibi_phy_my_0.083deg-3D_P1D-m_1760007847070.nc'
 #output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/Coper_model_only.txt'
-output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/Cadiz/Copernicus/ModelBasedProjected_CadizPD00603_Daily.txt'
+output_file = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/Cadiz/Copernicus/PD00609/ModelBasedProjected_CadizPD00609_Daily.txt'
 out_dir = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/GEM-SBP/Oceanogrphic_data/ODV/'
-slope_tif = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/Cadiz/Gebco_Slope_Cadiz.tif'
-bathy_tif = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/Cadiz/Gebco_Bethymetry_Cadiz.tif'
-manual_csv_path = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/Cadiz/PD00603GEOM.csv'
+slope_tif = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/Cadiz/Baty/Gebco_Slope_Cadiz.tif'
+bathy_tif = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/Cadiz/Baty/Gebco_Baty_Cadiz.tif'
+manual_csv_path = '/Users/ogado/Library/CloudStorage/OneDrive-UniversidadedeLisboa/Cadiz/PD00609GEOM.csv'
 # -------------------------------
 # ====================================================
 #                USER OPTIONS
